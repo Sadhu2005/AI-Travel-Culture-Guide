@@ -1,0 +1,26 @@
+.streamlit/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist/
+build/
+.env
+.venv
+env/
+ENV/
+*.log
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+# Test files with API keys
+test*.py
+test
