@@ -94,15 +94,75 @@ with st.sidebar:
     
     # Model Selection
     st.subheader("🤖 Model Selection")
+    
+    # Default models (fallback) - Prioritized by best for travel guide app
+    default_models = [
+        "gemini-2.5-flash",      # ⭐ BEST: Fast, efficient, perfect for travel guides
+        "gemini-2.5-pro",        # Most powerful, detailed responses
+        "gemini-2.0-flash",      # Stable alternative
+        "gemini-2.5-flash-lite", # Very fast, basic quality
+        "gemini-2.0-flash-001",  # Stable version
+        "gemini-flash-latest",    # Always latest flash
+        "gemini-1.5-flash",      # Older but reliable
+        "gemini-1.5-pro",        # Older pro version
+        "gemini-pro"             # Original stable model
+    ]
+    
+    available_models = default_models.copy()
+    
+    # Try to get available models dynamically if API key is set
+    if api_key:
+        try:
+            genai.configure(api_key=api_key)
+            models = genai.list_models()
+            found_models = []
+            for model in models:
+                if 'generateContent' in model.supported_generation_methods:
+                    short_name = model.name.replace("models/", "")
+                    if short_name not in found_models:
+                        found_models.append(short_name)
+            
+            if found_models:
+                # Prioritize newer models
+                priority_models = [m for m in found_models if "2.5" in m or "2.0" in m]
+                other_models = [m for m in found_models if m not in priority_models]
+                available_models = priority_models + other_models[:10]  # Limit total
+        except:
+            pass  # Use default if check fails
+    
+    # Add a button to refresh available models
+    if st.button("🔍 Refresh Available Models", help="Click to check which models your API key supports"):
+        try:
+            if api_key:
+                genai.configure(api_key=api_key)
+                models = genai.list_models()
+                found_models = []
+                for model in models:
+                    if 'generateContent' in model.supported_generation_methods:
+                        short_name = model.name.replace("models/", "")
+                        if short_name not in found_models:
+                            found_models.append(short_name)
+                
+                if found_models:
+                    # Prioritize newer models
+                    priority_models = [m for m in found_models if "2.5" in m or "2.0" in m]
+                    other_models = [m for m in found_models if m not in priority_models]
+                    available_models = priority_models + other_models[:10]
+                    st.success(f"✅ Found {len(found_models)} available model(s)")
+                    st.info(f"Recommended: {available_models[0] if available_models else 'N/A'}")
+                else:
+                    st.warning("⚠️ Could not fetch models. Using default list.")
+            else:
+                st.warning("⚠️ Please enter API key first to check available models.")
+        except Exception as e:
+            st.error(f"Error checking models: {str(e)}")
+            st.info("Using default model list.")
+    
     model_choice = st.selectbox(
         "Choose AI Model",
-        [
-            "models/gemini-2.0-flash-live-001",
-            "models/gemini-1.5-pro",
-            "models/gemini-1.5-flash"
-        ],
-        index=0,
-        help="Select the Gemini model to use"
+        available_models,
+        index=0,  # Default to first model (usually newest)
+        help=f"Select the Gemini model. {len(available_models)} model(s) available. Click 'Refresh' to update list."
     )
     
     # Travel Preferences
@@ -247,7 +307,13 @@ def call_gemini(prompt: str, model_choice: str, api_key: str) -> tuple:
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_choice)
+        
+        # Normalize model name - try with and without 'models/' prefix
+        model_name = model_choice
+        if not model_choice.startswith("models/"):
+            model_name = f"models/{model_choice}"
+        
+        model = genai.GenerativeModel(model_name)
         
         # Configure generation parameters
         generation_config = {
@@ -261,7 +327,11 @@ def call_gemini(prompt: str, model_choice: str, api_key: str) -> tuple:
         response = chat.send_message(prompt, generation_config=generation_config)
         return response.text.strip(), None
     except Exception as e:
-        return None, f"Error calling Gemini API: {str(e)}"
+        error_msg = str(e)
+        # Provide helpful error message for model issues
+        if "model" in error_msg.lower() or "not found" in error_msg.lower():
+            return None, f"Model '{model_choice}' not available. Try 'gemini-1.5-flash' or 'gemini-1.5-pro'. Error: {error_msg}"
+        return None, f"Error calling Gemini API: {error_msg}"
 
 # Parse itinerary output
 def parse_itinerary(output: str) -> Dict[str, Any]:
